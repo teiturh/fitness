@@ -15,8 +15,9 @@ from datetime import datetime
 from pathlib import Path
 
 # ── CONFIG ───────────────────────────────────────────────────────────
-INPUT_FILE  = Path("export.xml")          # Edit if your xml is elsewhere
-OUTPUT_FILE = Path("sleep_data.csv")
+DATA_DIR    = Path("data")
+INPUT_FILE  = DATA_DIR / "export.xml"     # Adjust if your xml is elsewhere
+OUTPUT_FILE = DATA_DIR / "sleep_data.csv"
 PREFIX      = "HKCategoryValueSleepAnalysis"
 # ──────────────────────────────────────────────────────────────────────
 
@@ -40,12 +41,14 @@ def main() -> None:
     if not INPUT_FILE.exists():
         raise FileNotFoundError(
             f"{INPUT_FILE} not found. "
-            "Move the script to the folder with export.xml or adjust INPUT_FILE."
+            "Place export.xml in the data folder or adjust INPUT_FILE."
         )
 
     print("🔍 Parsing export.xml …")
     tree = ET.parse(INPUT_FILE)
     root = tree.getroot()
+
+    OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
 
     with OUTPUT_FILE.open("w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
