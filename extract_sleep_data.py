@@ -11,14 +11,13 @@ Usage:
 
 import xml.etree.ElementTree as ET
 import csv
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 # ── CONFIG ───────────────────────────────────────────────────────────
 INPUT_FILE  = Path("export.xml")          # Edit if your xml is elsewhere
 OUTPUT_FILE = Path("sleep_data.csv")
 PREFIX      = "HKCategoryValueSleepAnalysis"
-LOOKBACK_DAYS = 7  # Number of days back from today to include
 # ──────────────────────────────────────────────────────────────────────
 
 
@@ -65,10 +64,6 @@ def main() -> None:
             except (KeyError, ValueError) as e:
                 skipped += 1
                 print(f"⚠️  Skipping record: {e}")
-                continue
-
-            cutoff = datetime.now(start.tzinfo) - timedelta(days=LOOKBACK_DAYS)
-            if start < cutoff:
                 continue
 
             duration_min = (end - start).total_seconds() / 60
