@@ -8,6 +8,7 @@ Read sleep_data.csv and produce a compact last-7-days summary CSV with:
   - Time woke up
   - Awake during night (hh:mm)
   - Total sleep (hh:mm)
+  - Sleep stage durations (hh:mm): Deep, Core, REM
 
 Usage:
     python3 sleep_night_summary.py [sleep_data.csv]
@@ -135,20 +136,29 @@ def main() -> None:
             if r["start"] < n_end and r["end"] > n_start:
                 awake_by_night[wake_date] += r["duration"]
 
-    # Last 7 nights: build weekly-style CSV (columns = weekdays, rows = 4 metrics)
+    # Last 7 nights: build weekly-style CSV (columns = weekdays, rows = metrics)
     wake_dates_sorted = sorted(night_ranges.keys())
     last_7_dates = wake_dates_sorted[-7:] if len(wake_dates_sorted) >= 7 else wake_dates_sorted
 
     last7_data = []
     for wd in last_7_dates:
         rng = night_ranges[wd]
-        total_sleep_min = sums_by_night[wd]["AsleepCore"] + sums_by_night[wd]["AsleepDeep"] + sums_by_night[wd]["AsleepREM"]
+        deep_min = sums_by_night[wd]["AsleepDeep"]
+        core_min = sums_by_night[wd]["AsleepCore"]
+        rem_min = sums_by_night[wd]["AsleepREM"]
+        total_sleep_min = deep_min + core_min + rem_min
+        deep_pct = int(round((deep_min * 100.0 / total_sleep_min))) if total_sleep_min > 0 else 0
+        core_pct = int(round((core_min * 100.0 / total_sleep_min))) if total_sleep_min > 0 else 0
+        rem_pct = int(round((rem_min * 100.0 / total_sleep_min))) if total_sleep_min > 0 else 0
         last7_data.append({
             "weekday": datetime.fromisoformat(wd).strftime("%a"),
             "fell_asleep": rng["inbed_start"].strftime("%H:%M"),
             "woke_up": rng["inbed_end"].strftime("%H:%M"),
             "awake_hhmm": minutes_to_hhmm(awake_by_night[wd]),
             "total_sleep_hhmm": minutes_to_hhmm(total_sleep_min),
+            "deep_hhmm_pct": f'{minutes_to_hhmm(deep_min)} ({deep_pct}%)',
+            "core_hhmm_pct": f'{minutes_to_hhmm(core_min)} ({core_pct}%)',
+            "rem_hhmm_pct": f'{minutes_to_hhmm(rem_min)} ({rem_pct}%)',
         })
 
     last_7_path = ANALYSIS_DIR / "sleep_last_7_days.csv"
@@ -159,6 +169,9 @@ def main() -> None:
         writer.writerow(["Time fell asleep"] + [d["fell_asleep"] for d in last7_data])
         writer.writerow(["Time woke up"] + [d["woke_up"] for d in last7_data])
         writer.writerow(["Awake during night (hh:mm)"] + [d["awake_hhmm"] for d in last7_data])
+        writer.writerow(["Deep sleep (hh:mm)"] + [d["deep_hhmm_pct"] for d in last7_data])
+        writer.writerow(["Core sleep (hh:mm)"] + [d["core_hhmm_pct"] for d in last7_data])
+        writer.writerow(["REM sleep (hh:mm)"] + [d["rem_hhmm_pct"] for d in last7_data])
         writer.writerow(["Total sleep (hh:mm)"] + [d["total_sleep_hhmm"] for d in last7_data])
     print(f"Wrote last {len(last7_data)} nights summary to {last_7_path}", file=sys.stderr)
 
