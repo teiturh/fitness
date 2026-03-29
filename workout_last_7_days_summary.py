@@ -37,22 +37,44 @@ def parse_iso(dt_str: str) -> datetime:
     return datetime.fromisoformat(dt_str)
 
 
-def activity_label(activity_type: str) -> str:
-    """
-    Turn HK workout activity types into readable labels.
+# Per-activity display overrides keyed on the suffix after "HKWorkoutActivityType".
+# show_hr: whether to include avgHR in output
+# label: custom display name (None = auto from CamelCase)
+# use_session_time: show wall-clock start→end time instead of active duration
+ACTIVITY_CONFIG: dict[str, dict] = {
+    "Walking":                    {"label": "Walking",          "show_hr": False},
+    "TraditionalStrengthTraining":{"label": "Strength Training","show_hr": True},
+    "Other":                      {"label": "Sauna",            "show_hr": True},
+    "Flexibility":                {"label": "Warmup",           "show_hr": False},
+    "Climbing":                   {"label": "Climbing",         "show_hr": True, "use_session_time": True},
+}
 
-    Example:
-      HKWorkoutActivityTypeFunctionalStrengthTraining -> Functional Strength Training
-    """
+
+def _activity_suffix(activity_type: str) -> str:
     s = (activity_type or "").strip()
     if s.startswith("HKWorkoutActivityType"):
-        s = s[len("HKWorkoutActivityType") :]
-    s = s.strip()
-    if not s or s == "Unknown":
+        s = s[len("HKWorkoutActivityType"):]
+    return s.strip()
+
+
+def activity_label(activity_type: str) -> str:
+    """Return the display label for an activity type."""
+    suffix = _activity_suffix(activity_type)
+    cfg = ACTIVITY_CONFIG.get(suffix, {})
+    if cfg.get("label"):
+        return cfg["label"]
+    if not suffix or suffix == "Unknown":
         return "Unknown"
     # Split CamelCase into words.
-    s = "".join((" " + c if c.isupper() else c) for c in s).strip()
-    return s
+    return "".join((" " + c if c.isupper() else c) for c in suffix).strip()
+
+
+def activity_show_hr(activity_type: str) -> bool:
+    return ACTIVITY_CONFIG.get(_activity_suffix(activity_type), {}).get("show_hr", True)
+
+
+def activity_use_session_time(activity_type: str) -> bool:
+    return ACTIVITY_CONFIG.get(_activity_suffix(activity_type), {}).get("use_session_time", False)
 
 
 def safe_float(x: str) -> Optional[float]:
@@ -67,13 +89,13 @@ def safe_float(x: str) -> Optional[float]:
         return None
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", type=Path, default=DATA_DIR / "exercise_workouts.csv")
     parser.add_argument("--stats", type=Path, default=DATA_DIR / "exercise_workout_statistics.csv")
     parser.add_argument("--out", type=Path, default=ANALYSIS_DIR / "workout_last_7_days.csv")
     parser.add_argument("--days", type=int, default=7, help="Number of days to summarise")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if not args.input.exists():
         print(f"Error: {args.input} not found", file=sys.stderr)
@@ -83,6 +105,8 @@ def main() -> None:
     rows: list[dict[str, str]] = []
     latest_day: Optional[date] = None
     duration_by_workout_id: dict[str, float] = {}
+    # session_minutes = wall-clock start→end (for activities that pause mid-session)
+    session_minutes_by_workout_id: dict[str, float] = {}
     with open(args.input, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
@@ -101,6 +125,13 @@ def main() -> None:
             dur = safe_float(row.get("durationMinutes") or "")
             if wid and dur is not None:
                 duration_by_workout_id[wid] = dur
+            # Compute wall-clock session length from start and end timestamps.
+            if wid and row.get("endDate"):
+                try:
+                    end_dt = parse_iso(row["endDate"])
+                    session_minutes_by_workout_id[wid] = (end_dt - start_dt).total_seconds() / 60.0
+                except ValueError:
+                    pass
             rows.append(row)
 
     if not latest_day:
@@ -112,6 +143,8 @@ def main() -> None:
 
     count_by_day: dict[date, int] = {}
     per_activity_by_day: dict[date, dict[str, float]] = defaultdict(lambda: defaultdict(float))
+    # Wall-clock session time accumulated per (day, activity).
+    session_by_day_activity: dict[date, dict[str, float]] = defaultdict(lambda: defaultdict(float))
 
     # Stats aggregations (day, activity) -> values
     kcal_by_day_activity: dict[date, dict[str, float]] = defaultdict(lambda: defaultdict(float))
@@ -149,6 +182,9 @@ def main() -> None:
         wid = (row.get("workout_id") or "").strip()
         if wid:
             workout_id_to_day_activity[wid] = (d, activity)
+            sess = session_minutes_by_workout_id.get(wid)
+            if sess is not None:
+                session_by_day_activity[d][activity] += sess
 
     # Load workout statistics (if present) and aggregate onto (day, activity).
     if args.stats.exists():
@@ -217,7 +253,9 @@ def main() -> None:
 
             parts = []
             for act, mins in items:
-                bits = [f"{int(round(mins))} min"]
+                # Use wall-clock session time for activities that pause mid-session.
+                display_mins = session_by_day_activity[d].get(act, mins) if activity_use_session_time(act) else mins
+                bits = [f"{int(round(display_mins))} min"]
 
                 km = km_by_day_activity[d].get(act)
                 if km is not None and km > 0.01:
@@ -227,10 +265,11 @@ def main() -> None:
                 if kcal is not None and kcal > 0.5:
                     bits.append(f"{int(round(kcal))} kcal")
 
-                hr_w = hr_weight_by_day_activity[d].get(act, 0.0)
-                if hr_w > 0:
-                    avg_hr = hr_weighted_sum_by_day_activity[d][act] / hr_w
-                    bits.append(f"avgHR {int(round(avg_hr))}")
+                if activity_show_hr(act):
+                    hr_w = hr_weight_by_day_activity[d].get(act, 0.0)
+                    if hr_w > 0:
+                        avg_hr = hr_weighted_sum_by_day_activity[d][act] / hr_w
+                        bits.append(f"avgHR {int(round(avg_hr))}")
 
                 p_w = power_weight_by_day_activity[d].get(act, 0.0)
                 if p_w > 0:
