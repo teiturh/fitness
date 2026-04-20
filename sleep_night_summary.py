@@ -13,7 +13,7 @@ Read sleep_data.csv and produce a compact last-7-days summary CSV with:
 Usage:
     python3 sleep_night_summary.py [sleep_data.csv]
 
-Defaults: input data/sleep_data.csv, output analysis/sleep_last_7_days.csv
+Defaults: input data/sleep_data.csv, output analysis/sleep_last_7_days_<start>_to_<end>.csv
 """
 
 from __future__ import annotations
@@ -189,7 +189,12 @@ def main(argv: list[str] | None = None) -> None:
             "rem_hhmm_pct": f'{minutes_to_hhmm(rem_min)} ({rem_pct}%)',
         })
 
-    last_7_path = ANALYSIS_DIR / "sleep_last_7_days.csv"
+    if last_7_dates:
+        start_date = last_7_dates[0]
+        end_date = last_7_dates[-1]
+        last_7_path = ANALYSIS_DIR / f"sleep_last_7_days_{start_date}_to_{end_date}.csv"
+    else:
+        last_7_path = ANALYSIS_DIR / "sleep_last_7_days.csv"
     last_7_path.parent.mkdir(parents=True, exist_ok=True)
     with open(last_7_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)

@@ -6,8 +6,8 @@ Full pipeline: extract data from export.xml, then run both summary scripts.
 
 Steps:
   1. extract_data.py        -- single XML pass → data/*.csv
-  2. sleep_night_summary.py -- sleep CSV    → analysis/sleep_last_7_days.csv
-  3. workout_last_7_days_summary.py -- workout CSVs → analysis/workout_last_7_days.csv
+  2. sleep_night_summary.py -- sleep CSV    → analysis/sleep_last_7_days_<start>_to_<end>.csv
+  3. workout_summary.py -- workout CSVs → analysis/workout_summary_<start>_to_<end>.csv
 
 Usage:
   python3 run_all.py
@@ -22,7 +22,7 @@ import time
 
 import extract_data
 import sleep_night_summary
-import workout_last_7_days_summary
+import workout_summary
 
 
 def run_step(label: str, fn, argv: list[str]) -> None:
@@ -44,7 +44,7 @@ def main() -> None:
     try:
         run_step("Extracting data from export.xml", extract_data.main, [])
         run_step(f"Summarising sleep (last {args.days} days)", sleep_night_summary.main, days_argv)
-        run_step(f"Summarising workouts (last {args.days} days)", workout_last_7_days_summary.main, days_argv)
+        run_step(f"Summarising workouts (last {args.days} days)", workout_summary.main, days_argv)
     except SystemExit as e:
         print(f"\nPipeline failed (exit code {e.code})", file=sys.stderr)
         sys.exit(e.code)
@@ -54,8 +54,8 @@ def main() -> None:
 
     total = time.monotonic() - t_start
     print(f"\nAll done in {total:.1f}s")
-    print("  analysis/sleep_last_7_days.csv")
-    print("  analysis/workout_last_7_days.csv")
+    print("  analysis/sleep_last_7_days_<start>_to_<end>.csv")
+    print("  analysis/workout_summary_<start>_to_<end>.csv")
 
 
 if __name__ == "__main__":

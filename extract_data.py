@@ -7,8 +7,8 @@ all intermediate CSVs consumed by the summary scripts.
 
 Outputs:
   - data/sleep_data.csv                     (for sleep_night_summary.py)
-  - data/exercise_workouts.csv              (for workout_last_7_days_summary.py)
-  - data/exercise_workout_statistics.csv    (for workout_last_7_days_summary.py)
+  - data/exercise_workouts.csv              (for workout_summary.py)
+  - data/exercise_workout_statistics.csv    (for workout_summary.py)
 
 Usage:
   python3 extract_data.py
